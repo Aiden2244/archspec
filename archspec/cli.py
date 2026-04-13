@@ -11,6 +11,7 @@ import typing
 
 from . import __version__ as archspec_version
 from .cpu import host, why_not
+from .gpu import host as gpu_host
 
 
 def _make_parser() -> argparse.ArgumentParser:
@@ -48,6 +49,13 @@ def _make_parser() -> argparse.ArgumentParser:
     )
     cpu_command.set_defaults(run=cpu)
 
+    gpu_command = subcommands.add_parser(
+        "gpu",
+        help="archspec command line interface for GPU",
+        description="archspec command line interface for GPU",
+    )
+    gpu_command.set_defaults(run=gpu)
+
     return parser
 
 
@@ -61,6 +69,24 @@ def cpu(args) -> int:
     except FileNotFoundError as exc:
         print(exc)
         return 1
+    return 0
+
+
+def gpu(args) -> int:
+    """Run the `archspec gpu` subcommand."""
+    try:
+        gpus = gpu_host()
+    except Exception as exc:
+        print(exc)
+        return 1
+
+    if not gpus:
+        print("No GPUs detected.")
+        return 0
+
+    for detected_gpu in gpus:
+        print(f"found {detected_gpu['vendor']} gpu ({detected_gpu['device_id']})")
+
     return 0
 
 
