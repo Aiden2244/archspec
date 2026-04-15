@@ -8,7 +8,9 @@ import collections
 import functools
 import os
 import platform
-from typing import Any, Callable, Dict, List
+from typing import Callable, Dict, List, Set
+
+from archspec.gpu.gpu_microarch import GPUMicroarch
 
 #: PCI class codes for GPU devices
 #: https://admin.pci-ids.ucw.cz/read/PD/03
@@ -53,20 +55,19 @@ def _read_sysfs_file(path: str) -> str:
 
 
 @detection(operating_system="Linux")
-def _detect_gpus_linux() -> List[Dict[str, str]]:
-    """Detect GPUs by scanning sysfs PCI devices on Linux.
+def _detect_gpu_vendors_linux() -> Set[str]:
+    """Detect which GPU vendors are present by scanning sysfs PCI devices on Linux.
 
     Iterates over ``/sys/bus/pci/devices/`` and filters for devices whose PCI class
-    indicates a VGA controller (``0x0300``) or 3D controller (``0x0302``). For each
-    matching device, reads the vendor and device ID to identify the GPU.
+    indicates a VGA controller (``0x0300``) or 3D controller (``0x0302``).
 
     Returns:
-        A list of dicts, each containing ``pci_address``, ``vendor``, and ``device_id``.
+        A set of vendor names (e.g. ``{"nvidia", "intel"}``) present on the system.
     """
-    gpus: List[Dict[str, str]] = []
+    vendors: Set[str] = set()
 
     if not os.path.isdir(SYSFS_PCI_DEVICES):
-        return gpus
+        return vendors
 
     for entry in os.listdir(SYSFS_PCI_DEVICES):
         device_dir = os.path.join(SYSFS_PCI_DEVICES, entry)
@@ -83,44 +84,59 @@ def _detect_gpus_linux() -> List[Dict[str, str]]:
 
         vendor_id = _read_sysfs_file(os.path.join(device_dir, "vendor"))
         vendor_name = GPU_VENDORS.get(vendor_id)
-        if vendor_name is None:
-            continue
+        if vendor_name is not None:
+            vendors.add(vendor_name)
 
-        device_id = _read_sysfs_file(os.path.join(device_dir, "device"))
+    return vendors
 
-        gpus.append(
-            {
-                "pci_address": entry,
-                "vendor": vendor_name,
-                "device_id": device_id,
-            }
+
+def _nvidia_info() -> List[GPUMicroarch]:
+    """Retrieve info for all NVIDIA GPUs using nvidia-smi."""
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            [
+                "nvidia-smi",
+                "--query-gpu=gpu_name,driver_version",
+                "--format=csv,noheader",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
         )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return []
 
+    gpus: List[GPUMicroarch] = []
+    for line in result.stdout.strip().splitlines():
+        parts = [p.strip() for p in line.split(",")]
+        if len(parts) >= 2:
+            gpus.append(
+                GPUMicroarch(
+                    brand_string=parts[0],
+                    vendor="nvidia",
+                    driver_version=parts[1],
+                    vendor_pci_code="0x10de",
+                )
+            )
     return gpus
 
 
-def _nvidia_info(pci_address: str, device_id: str) -> Dict[str, Any]:
-    """Retrieve detailed GPU info for an NVIDIA device.
-
-    TODO: Use nvidia-smi to query compute capability, driver version, etc.
-    """
-    return {"vendor": "nvidia", "pci_address": pci_address, "device_id": device_id}
-
-
-def _amd_info(pci_address: str, device_id: str) -> Dict[str, Any]:
-    """Retrieve detailed GPU info for an AMD device.
+def _amd_info() -> List[GPUMicroarch]:
+    """Retrieve info for all AMD GPUs.
 
     TODO: Use rocm-smi or similar to query device details.
     """
-    return {"vendor": "amd", "pci_address": pci_address, "device_id": device_id}
+    return []
 
 
-def _intel_info(pci_address: str, device_id: str) -> Dict[str, Any]:
-    """Retrieve detailed GPU info for an Intel device.
+def _intel_info() -> List[GPUMicroarch]:
+    """Retrieve info for all Intel GPUs.
 
     TODO: Use appropriate tooling to query device details.
     """
-    return {"vendor": "intel", "pci_address": pci_address, "device_id": device_id}
+    return []
 
 
 #: Mapping from vendor names to detail-fetching functions
@@ -132,29 +148,28 @@ _VENDOR_DETAIL_FN: Dict[str, Callable] = {
 
 
 @functools.lru_cache(maxsize=None)
-def host() -> List[Dict[str, Any]]:
+def host() -> List[GPUMicroarch]:
     """Detects the GPUs on the host system and returns information about them.
 
-    Stage 1 identifies GPUs via OS-specific detection (sysfs on Linux).
-    Stage 2 calls vendor-specific tooling for detailed information.
+    Stage 1 determines which GPU vendors are present via OS-specific detection
+    (sysfs on Linux). Stage 2 calls each present vendor's CLI tool to retrieve
+    detailed information for all GPUs of that vendor.
 
     Returns:
-        A list of dicts, each describing a detected GPU.
+        A list of GPUMicroarch objects, one per detected GPU.
     """
+    vendors: Set[str] = set()
     for factory in INFO_FACTORY[platform.system()]:
         try:
-            raw_gpus = factory()
+            vendors = factory()
+            break
         except Exception:
             continue
 
-        results: List[Dict[str, Any]] = []
-        for gpu in raw_gpus:
-            detail_fn = _VENDOR_DETAIL_FN.get(gpu["vendor"])
-            if detail_fn is not None:
-                results.append(detail_fn(gpu["pci_address"], gpu["device_id"]))
-            else:
-                results.append(gpu)
+    results: List[GPUMicroarch] = []
+    for vendor in vendors:
+        detail_fn = _VENDOR_DETAIL_FN.get(vendor)
+        if detail_fn is not None:
+            results.extend(detail_fn())
 
-        return results
-
-    return []
+    return results
