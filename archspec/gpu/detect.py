@@ -90,6 +90,30 @@ def _detect_gpu_vendors_linux() -> Set[str]:
     return vendors
 
 
+def _parse_nvidia_pci_device_id(combined_id: str) -> tuple[str, str]:
+    """Parse a combined PCI device ID into (device, vendor) codes.
+
+    Args:
+        combined_id: 10-character hex string from nvidia-smi ``pci.device_id``
+            (e.g. ``0x2C0210DE``).
+
+    Returns:
+        A tuple of ``(component_pci_code, vendor_pci_code)`` in lowercase
+        (e.g. ``("0x2c02", "0x10de")``).
+
+    Raises:
+        ValueError: if *combined_id* is not a valid 10-character hex string
+            with a ``0x`` prefix.
+    """
+    if len(combined_id) != 10 or combined_id[:2] != "0x":
+        raise ValueError(
+            f"invalid PCI device ID: expected 10-character '0x'-prefixed hex string, got {combined_id!r}"
+        )
+
+    hex_digits = combined_id[2:]
+    return (f"0x{hex_digits[:4]}".lower(), f"0x{hex_digits[4:]}".lower())
+
+
 def _nvidia_info() -> List[GPUMicroarch]:
     """Retrieve info for all NVIDIA GPUs using nvidia-smi."""
     import subprocess
@@ -98,7 +122,7 @@ def _nvidia_info() -> List[GPUMicroarch]:
         result = subprocess.run(
             [
                 "nvidia-smi",
-                "--query-gpu=gpu_name,driver_version",
+                "--query-gpu=gpu_name,driver_version,pci.device_id",
                 "--format=csv,noheader",
             ],
             capture_output=True,
@@ -113,14 +137,16 @@ def _nvidia_info() -> List[GPUMicroarch]:
     gpus: List[GPUMicroarch] = []
     for line in result.stdout.strip().splitlines():
         parts = [p.strip() for p in line.split(",")]
-        # based on nvidia-smi query, parts = ["brand_string", "driver_version"]
-        if len(parts) >= 2:
+        # based on nvidia-smi query, parts = ["brand_string", "driver_version", "combined vendor and device pci code"]
+        if len(parts) >= 3:
+            pci_codes = _parse_nvidia_pci_device_id(parts[2])
             gpus.append(
                 GPUMicroarch(
-                    brand_string=parts[0],
                     vendor="nvidia",
+                    brand_string=parts[0],
                     driver_version=parts[1],
-                    vendor_pci_code="0x10de",
+                    component_pci_code=pci_codes[0],
+                    vendor_pci_code=pci_codes[1],
                 )
             )
     return gpus
