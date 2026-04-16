@@ -105,7 +105,11 @@ def _nvidia_info() -> List[GPUMicroarch]:
             text=True,
             check=True,
         )
-    except (subprocess.CalledProcessError, FileNotFoundError):
+    except FileNotFoundError:
+        raise RuntimeError(
+            "NVIDIA GPU detected but nvidia-smi is not installed"
+        )
+    except subprocess.CalledProcessError:
         return []
 
     gpus: List[GPUMicroarch] = []
