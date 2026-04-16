@@ -106,15 +106,14 @@ def _nvidia_info() -> List[GPUMicroarch]:
             check=True,
         )
     except FileNotFoundError:
-        raise RuntimeError(
-            "NVIDIA GPU detected but nvidia-smi is not installed"
-        )
+        raise RuntimeError("NVIDIA GPU detected but nvidia-smi is not installed")
     except subprocess.CalledProcessError:
         return []
 
     gpus: List[GPUMicroarch] = []
     for line in result.stdout.strip().splitlines():
         parts = [p.strip() for p in line.split(",")]
+        # based on nvidia-smi query, parts = ["brand_string", "driver_version"]
         if len(parts) >= 2:
             gpus.append(
                 GPUMicroarch(
