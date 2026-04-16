@@ -3,8 +3,6 @@
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
-from typing import IO, Any, Dict, List, Optional, Set, Tuple, Union
-
 
 class GPUMicroarch:
     """Specific GPU Microarchitecture"""
