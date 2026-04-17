@@ -86,7 +86,7 @@ def gpu(args) -> int:
 
     for detected_gpu in gpus:
         print(
-            f"found {detected_gpu.vendor} gpu ({detected_gpu.brand_string}) with driver {detected_gpu.driver_version}"
+            f"{detected_gpu.detailed_string()}"
         )
 
     return 0

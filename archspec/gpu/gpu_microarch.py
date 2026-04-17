@@ -35,3 +35,13 @@ class GPUMicroarch:
     def __str__(self) -> str:
         # TODO eventually change to name
         return self.brand_string
+
+    def detailed_string(self) -> str:
+        """Returns detailed information about what the Microarch detected"""
+        detail = ""
+
+        for field, value in vars(self).items():
+            if value != "":
+                detail += f"{field}: {value}\n"
+
+        return detail.strip()
