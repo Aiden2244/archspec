@@ -11,6 +11,7 @@ information once presence is confirmed.
 """
 
 import os
+import subprocess
 from abc import ABC, abstractmethod
 from typing import List, Tuple
 
@@ -64,9 +65,38 @@ class Vendor(ABC):
 
         return False
 
+
+    def _detect_via_lspci(self) -> bool:
+        """Return True if lspci detect a compatible VGA controller for a GPU"""
+        if not os.path.exists("/usr/bin/lspci"):
+            return False
+
+        lspci_command = ["lspci"]
+        command_raw_output = subprocess.run(
+            lspci_command,
+            capture_output=True,
+            text=True,
+            check=True
+        )
+
+        output = command_raw_output.stdout.strip().lower()
+
+        output_list = output.split("\n")
+        vga_list = list()
+
+        print(f"name: {self.name}")
+        for line in output_list:
+            if self.name in line and "vga" in line:
+                # TODO remove debug
+                print(f"lspci line: {line}")
+                vga_list.append(line)
+
+        return len(vga_list) > 0
+
     def detect(self) -> bool:
         """Return True if this vendor's hardware is present on the system."""
-        return self._scan_sysfs()
+
+        return self._detect_via_lspci()
 
     @abstractmethod
     def info(self) -> List[GPUMicroarch]:
