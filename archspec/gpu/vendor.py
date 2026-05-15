@@ -66,10 +66,10 @@ class Vendor(ABC):
         return False
 
 
-    def _detect_via_lspci(self) -> bool:
+    def detect_via_lspci(self) -> List[str] | None:
         """Return True if lspci detect a compatible VGA controller for a GPU"""
         if not os.path.exists("/usr/bin/lspci"):
-            return False
+            return
 
         lspci_command = ["lspci"]
         command_raw_output = subprocess.run(
@@ -91,12 +91,13 @@ class Vendor(ABC):
                 print(f"lspci line: {line}")
                 vga_list.append(line)
 
-        return len(vga_list) > 0
+        return vga_list
+
 
     def detect(self) -> bool:
         """Return True if this vendor's hardware is present on the system."""
 
-        return self._detect_via_lspci()
+        return self._scan_sysfs()
 
     @abstractmethod
     def info(self) -> List[GPUMicroarch]:
