@@ -46,8 +46,9 @@ class Nvidia(Vendor):
                     "--query-gpu=gpu_name,driver_version,pci.device_id",
                     "--format=csv,noheader",
                 ],
-                capture_output=True,
-                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=True,
                 check=True,
             )
         except FileNotFoundError:
