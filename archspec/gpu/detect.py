@@ -8,6 +8,8 @@ import collections
 import functools
 import os
 import platform
+import subprocess
+import json
 from typing import Callable, Dict, List, Set, Tuple
 
 from archspec.gpu.gpu_microarch import GPUMicroarch
@@ -193,7 +195,6 @@ def _parse_nvidia_pci_device_id(combined_id: str) -> Tuple[str, str]:
 
 def _nvidia_info() -> List[GPUMicroarch]:
     """Retrieve info for all NVIDIA GPUs using nvidia-smi."""
-    import subprocess
 
     try:
         result = subprocess.run(
@@ -231,11 +232,63 @@ def _nvidia_info() -> List[GPUMicroarch]:
 
 
 def _amd_info() -> List[GPUMicroarch]:
-    """Retrieve info for all AMD GPUs.
+    """Retrieve info for all AMD GPUs using rocm-smi."""
 
-    TODO: Use rocm-smi or similar to query device details.
-    """
-    return []
+    try:
+        result = subprocess.run(
+            [
+                "rocm-smi",
+                "--showproductname",
+                "--showdriverversion",
+                "--showid",
+                "--json",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+            check=True,
+        )
+    except FileNotFoundError:
+        raise RuntimeError("AMD GPU detected but rocm-smi is not installed")
+    except subprocess.CalledProcessError:
+        return []
+
+    try:
+        data = json.loads(result.stdout)
+    except ValueError:
+        return []
+
+    # AMD's PCI vendor code is not reported by rocm-smi, so derive it from the
+    # known vendor mapping the same way the ``vendor`` field is hardcoded.
+    vendor_pci_code = next(
+        code for code, name in GPU_VENDORS.items() if name == "amd"
+    )
+
+    # The driver version is reported once for the whole system rather than
+    # per-card, under a top-level "system" entry.
+    system_info = data.get("system", {})
+    driver_version = system_info.get("Driver version", "")
+
+    gpus: List[GPUMicroarch] = []
+    for key, info in data.items():
+        if not key.startswith("card"):
+            continue
+
+        # Key names vary across rocm-smi versions, so fall back across the
+        # known aliases for the marketing name and the PCI device ID.
+        brand_string = info.get("Card Series") or info.get("Market Name") or ""
+        component_pci_code = info.get("Device ID") or info.get("GPU ID") or ""
+
+        gpus.append(
+            GPUMicroarch(
+                vendor="amd",
+                brand_string=brand_string,
+                driver_version=driver_version,
+                component_pci_code=component_pci_code.lower(),
+                vendor_pci_code=vendor_pci_code,
+            )
+        )
+    return gpus
 
 
 def _intel_info() -> List[GPUMicroarch]:
