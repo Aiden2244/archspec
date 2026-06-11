@@ -16,7 +16,7 @@ from archspec.gpu.gpu_microarch import GPUMicroarch
 
 #: PCI class codes for GPU devices
 #: https://admin.pci-ids.ucw.cz/read/PD/03
-GPU_PCI_CLASSES = ("0x030000", "0x030200")
+GPU_PCI_CLASSES = ("0x030000", "0x030200", "0x120000")
 
 #: Mapping from PCI vendor IDs to vendor names
 #: https://devicehunt.com/view/type/pci/vendor/10DE -- NVIDIA
