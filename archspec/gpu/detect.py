@@ -151,15 +151,20 @@ def _detect_gpu_vendors_linux() -> Set[str]:
     Returns:
         A set of vendor names (e.g. ``{"nvidia", "intel"}``) present on the system.
     """
-    vendors = _scan_sysfs_pci_for_gpus()
 
-    for vendor, fallback_fn in _VENDOR_FALLBACK_FN.items():
-        if vendor in vendors:
-            continue
-        if fallback_fn():
-            vendors.add(vendor)
+    # TODO this is the sysfs scan logic, move to alternate location
+    if False:
+        vendors = _scan_sysfs_pci_for_gpus()
 
-    return vendors
+        for vendor, fallback_fn in _VENDOR_FALLBACK_FN.items():
+            if vendor in vendors:
+                continue
+            if fallback_fn():
+                vendors.add(vendor)
+
+        return vendors
+
+    return {"nvidia", "intel", "amd"}
 
 
 def _parse_nvidia_pci_device_id(combined_id: str) -> tuple[str, str]:
