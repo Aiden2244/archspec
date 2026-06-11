@@ -8,7 +8,7 @@ import collections
 import functools
 import os
 import platform
-from typing import Callable, Dict, List, Set
+from typing import Callable, Dict, List, Set, Tuple
 
 from archspec.gpu.gpu_microarch import GPUMicroarch
 
@@ -167,7 +167,7 @@ def _detect_gpu_vendors_linux() -> Set[str]:
     return {"nvidia", "intel", "amd"}
 
 
-def _parse_nvidia_pci_device_id(combined_id: str) -> tuple[str, str]:
+def _parse_nvidia_pci_device_id(combined_id: str) -> Tuple[str, str]:
     """Parse a combined PCI device ID into (device, vendor) codes.
 
     Args:
@@ -202,8 +202,9 @@ def _nvidia_info() -> List[GPUMicroarch]:
                 "--query-gpu=gpu_name,driver_version,pci.device_id",
                 "--format=csv,noheader",
             ],
-            capture_output=True,
-            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
             check=True,
         )
     except FileNotFoundError:
