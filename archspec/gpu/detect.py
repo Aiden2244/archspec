@@ -210,7 +210,8 @@ def _nvidia_info() -> List[GPUMicroarch]:
             check=True,
         )
     except FileNotFoundError:
-        raise RuntimeError("NVIDIA GPU detected but nvidia-smi is not installed")
+        print("info: Nvidia-smi is not installed; skipping")
+        return []
     except subprocess.CalledProcessError:
         return []
 
@@ -250,7 +251,8 @@ def _amd_info() -> List[GPUMicroarch]:
             check=True,
         )
     except FileNotFoundError:
-        raise RuntimeError("AMD GPU detected but rocm-smi is not installed")
+        print("info: Rocm-smi is not installed; skipping")
+        return []
     except subprocess.CalledProcessError:
         return []
 
