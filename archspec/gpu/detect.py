@@ -33,10 +33,6 @@ GPU_VENDORS = {
 #: Path to the sysfs PCI devices directory
 SYSFS_PCI_DEVICES = "/sys/bus/pci/devices"
 
-#: Path to the NVIDIA driver's procfs directory, populated when the
-#: kernel module is loaded and bound to at least one GPU
-PROC_NVIDIA_GPUS = "/proc/driver/nvidia/gpus"
-
 #: Mapping from operating systems to chain of commands
 #: to obtain a list of raw info on the current gpus
 INFO_FACTORY: Dict[str, List[Callable]] = collections.defaultdict(list)
@@ -102,52 +98,6 @@ def _scan_sysfs_pci_for_gpus() -> List[GPUMicroarch]:
         )
 
     return gpus
-
-
-def _detect_nvidia_fallback() -> bool:
-    """Detect NVIDIA GPUs via the kernel driver's procfs interface.
-
-    ``/proc/driver/nvidia/gpus/`` is populated by the NVIDIA kernel module
-    once it has bound to at least one GPU. This signal is independent of
-    PCI topology, so it works in virtualized environments (e.g. vGPU or
-    passthrough) where the device may not appear under the expected PCI
-    classes in sysfs.
-
-    Returns:
-        True if the NVIDIA driver has bound to at least one GPU.
-    """
-    # TODO remove
-    print("DEBUG: nvidia fallback logic dispatched")
-    try:
-        return os.path.isdir(PROC_NVIDIA_GPUS) and bool(os.listdir(PROC_NVIDIA_GPUS))
-    except OSError:
-        return False
-
-
-def _detect_amd_fallback() -> bool:
-    """Fallback detection for AMD GPUs.
-
-    TODO: probe the amdgpu/radeon kernel modules and ``/dev/dri`` render nodes.
-    """
-    return False
-
-
-def _detect_intel_fallback() -> bool:
-    """Fallback detection for Intel GPUs.
-
-    TODO: probe the i915/xe kernel modules and ``/dev/dri`` render nodes.
-    """
-    return False
-
-
-#: Mapping from vendor names to fallback detection functions, used when
-#: sysfs PCI scanning does not surface a given vendor. Iteration order
-#: (NVIDIA -> AMD -> Intel) follows discrete-GPU market share.
-_VENDOR_FALLBACK_FN: Dict[str, Callable[[], bool]] = {
-    "nvidia": _detect_nvidia_fallback,
-    "amd": _detect_amd_fallback,
-    "intel": _detect_intel_fallback,
-}
 
 
 @detection(operating_system="Linux")
