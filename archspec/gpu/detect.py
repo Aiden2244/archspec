@@ -8,10 +8,11 @@ import collections
 import functools
 import os
 import platform
+import shutil
 import subprocess
 import json
 import warnings
-from typing import Callable, Dict, List, Set, Tuple
+from typing import Callable, Dict, List, Tuple
 
 from archspec.gpu.gpu_microarch import GPUMicroarch
 
@@ -61,19 +62,20 @@ def _read_sysfs_file(path: str) -> str:
         return f.read().strip()
 
 
-def _scan_sysfs_pci_for_gpus() -> Set[str]:
-    """Detect GPU vendors by scanning sysfs PCI devices.
+def _scan_sysfs_pci_for_gpus() -> List[GPUMicroarch]:
+    """Enumerate GPUs by scanning sysfs PCI devices.
 
-    Iterates over ``/sys/bus/pci/devices/`` and filters for devices whose PCI class
-    indicates a VGA controller (``0x0300``) or 3D controller (``0x0302``).
+    Iterates over ``/sys/bus/pci/devices/`` and yields one entry per device whose
+    PCI class indicates a GPU. Each entry carries only the identity available
+    without a vendor tool: the vendor name and the PCI vendor and device codes.
 
     Returns:
-        A set of vendor names present on the system per sysfs.
+        A list of GPUMicroarch, one per GPU-class PCI device on the system.
     """
-    vendors: Set[str] = set()
+    gpus: List[GPUMicroarch] = []
 
     if not os.path.isdir(SYSFS_PCI_DEVICES):
-        return vendors
+        return gpus
 
     for entry in os.listdir(SYSFS_PCI_DEVICES):
         device_dir = os.path.join(SYSFS_PCI_DEVICES, entry)
@@ -83,17 +85,23 @@ def _scan_sysfs_pci_for_gpus() -> Set[str]:
         class_path = os.path.join(device_dir, "class")
         if not os.path.exists(class_path):
             continue
-
-        class_code = _read_sysfs_file(class_path)
-        if class_code not in GPU_PCI_CLASSES:
+        if _read_sysfs_file(class_path) not in GPU_PCI_CLASSES:
             continue
 
         vendor_id = _read_sysfs_file(os.path.join(device_dir, "vendor"))
         vendor_name = GPU_VENDORS.get(vendor_id)
-        if vendor_name is not None:
-            vendors.add(vendor_name)
+        if vendor_name is None:
+            continue
 
-    return vendors
+        gpus.append(
+            GPUMicroarch(
+                vendor=vendor_name,
+                vendor_pci_code=vendor_id,
+                component_pci_code=_read_sysfs_file(os.path.join(device_dir, "device")),
+            )
+        )
+
+    return gpus
 
 
 def _detect_nvidia_fallback() -> bool:
@@ -143,29 +151,9 @@ _VENDOR_FALLBACK_FN: Dict[str, Callable[[], bool]] = {
 
 
 @detection(operating_system="Linux")
-def _detect_gpu_vendors_linux() -> Set[str]:
-    """Detect which GPU vendors are present on Linux.
-
-    First scans sysfs PCI devices. For any vendor not surfaced by the sysfs
-    scan, invokes that vendor's fallback detection (e.g. probing kernel
-    driver state) to catch environments where the device does not appear
-    under the expected PCI classes.
-
-    Returns:
-        A set of vendor names (e.g. ``{"nvidia", "intel"}``) present on the system.
-    """
-
-    vendors = _scan_sysfs_pci_for_gpus()
-
-    # TODO re-enable vendor fallback in the future
-    if False:
-        for vendor, fallback_fn in _VENDOR_FALLBACK_FN.items():
-            if vendor in vendors:
-                continue
-            if fallback_fn():
-                vendors.add(vendor)
-
-    return vendors
+def _detect_gpus_linux() -> List[GPUMicroarch]:
+    """Enumerate GPUs present on Linux by scanning sysfs PCI devices."""
+    return _scan_sysfs_pci_for_gpus()
 
 
 def _parse_nvidia_pci_device_id(combined_id: str) -> Tuple[str, str]:
@@ -192,7 +180,7 @@ def _parse_nvidia_pci_device_id(combined_id: str) -> Tuple[str, str]:
     return (f"0x{hex_digits[:4]}".lower(), f"0x{hex_digits[4:]}".lower())
 
 
-def _nvidia_info() -> List[GPUMicroarch]:
+def _nvidia_smi_info() -> List[GPUMicroarch]:
     """Retrieve info for all NVIDIA GPUs using nvidia-smi."""
 
     try:
@@ -231,7 +219,7 @@ def _nvidia_info() -> List[GPUMicroarch]:
     return gpus
 
 
-def _amd_info() -> List[GPUMicroarch]:
+def _rocm_smi_info() -> List[GPUMicroarch]:
     """Retrieve info for all AMD GPUs using rocm-smi."""
 
     try:
@@ -292,45 +280,38 @@ def _amd_info() -> List[GPUMicroarch]:
     return gpus
 
 
-def _intel_info() -> List[GPUMicroarch]:
-    """Retrieve info for all Intel GPUs.
-
-    TODO: Use appropriate tooling to query device details.
-    """
-    return []
-
-
-#: Mapping from vendor names to detail-fetching functions
-_VENDOR_DETAIL_FN: Dict[str, Callable] = {
-    "nvidia": _nvidia_info,
-    "amd": _amd_info,
-    "intel": _intel_info,
-}
+#: Vendor SMI tools used to enrich detection: (executable, info function).
+#: Each runs only when its executable is on PATH, independently of what sysfs
+#: reports, so GPUs visible only to a tool (e.g. under WSL) are still detected.
+_SMI_SOURCES: List[Tuple[str, Callable[[], List[GPUMicroarch]]]] = [
+    ("nvidia-smi", _nvidia_smi_info),
+    ("rocm-smi", _rocm_smi_info),
+]
 
 
 @functools.lru_cache(maxsize=None)
 def host() -> List[GPUMicroarch]:
     """Detects the GPUs on the host system and returns information about them.
 
-    Stage 1 determines which GPU vendors are present via OS-specific detection
-    (sysfs on Linux). Stage 2 calls each present vendor's CLI tool to retrieve
-    detailed information for all GPUs of that vendor.
-
     Returns:
         A list of GPUMicroarch objects, one per detected GPU.
     """
-    vendors: Set[str] = set()
+    results: List[GPUMicroarch] = []
+
+    for executable, info_fn in _SMI_SOURCES:
+        if shutil.which(executable) is not None:
+            results.extend(info_fn())
+
+    described = {(gpu.vendor_pci_code, gpu.component_pci_code) for gpu in results}
+
     for factory in INFO_FACTORY[platform.system()]:
         try:
-            vendors = factory()
-            break
+            scanned = factory()
         except Exception:
             continue
-
-    results: List[GPUMicroarch] = []
-    for vendor in vendors:
-        detail_fn = _VENDOR_DETAIL_FN.get(vendor)
-        if detail_fn is not None:
-            results.extend(detail_fn())
+        for gpu in scanned:
+            if (gpu.vendor_pci_code, gpu.component_pci_code) not in described:
+                results.append(gpu)
+        break
 
     return results
