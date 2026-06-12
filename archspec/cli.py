@@ -84,10 +84,13 @@ def gpu(args) -> int:
         print("No GPUs detected.")
         return 0
 
-    for detected_gpu in gpus:
-        print(
-            f"{detected_gpu.detailed_string()}"
-        )
+    num_gpus = len(gpus)
+    print(f"Detected {num_gpus} GPU(s).\n")
+    for i in range(num_gpus):
+        print(f"GPU {i}:")
+        print(f"{gpus[i].detailed_string()}")
+        if i < (num_gpus - 1):
+            print()
 
     return 0
 
