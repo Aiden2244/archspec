@@ -10,6 +10,7 @@ import os
 import platform
 import subprocess
 import json
+import warnings
 from typing import Callable, Dict, List, Set, Tuple
 
 from archspec.gpu.gpu_microarch import GPUMicroarch
@@ -207,7 +208,7 @@ def _nvidia_info() -> List[GPUMicroarch]:
             check=True,
         )
     except FileNotFoundError:
-        print("info: Nvidia-smi is not installed; skipping")
+        warnings.warn("nvidia-smi is not installed; skipping NVIDIA GPU detection")
         return []
     except subprocess.CalledProcessError:
         return []
@@ -248,7 +249,7 @@ def _amd_info() -> List[GPUMicroarch]:
             check=True,
         )
     except FileNotFoundError:
-        print("info: Rocm-smi is not installed; skipping")
+        warnings.warn("rocm-smi is not installed; skipping AMD GPU detection")
         return []
     except subprocess.CalledProcessError:
         return []
