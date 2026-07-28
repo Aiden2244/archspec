@@ -5,12 +5,23 @@
 import json
 import subprocess
 
+import jsonschema
 import pytest
 
 import archspec.gpu.amd
 import archspec.gpu.detect
 import archspec.gpu.generic
 import archspec.gpu.nvidia
+import archspec.gpu.schema
+
+
+# --- JSON data ---
+
+
+def test_validate_json_files():
+    jsonschema.validate(
+        archspec.gpu.schema.DETECTION_JSON.data, archspec.gpu.schema.DETECTION_JSON_SCHEMA.data
+    )
 
 
 def make_pci_devices(root, devices):
