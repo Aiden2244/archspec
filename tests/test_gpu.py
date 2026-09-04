@@ -130,18 +130,18 @@ def test_nvidia_pci_device_id_invalid(bad_id):
 @pytest.mark.parametrize(
     "compute_cap,expected",
     [
-        ("9.0", "sm_90"),
-        ("8.6", "sm_86"),
-        ("7.5", "sm_75"),
-        ("12.0", "sm_120"),  # multi-digit major
+        ("9.0", "90"),
+        ("8.6", "86"),
+        ("7.5", "75"),
+        ("12.0", "120"),  # multi-digit major
         ("", ""),  # empty
         ("9", ""),  # no dot / no minor
         ("x.0", ""),  # non-digit lead
-        ("sm_90", ""),  # already a flag, not decimal input
+        ("90", ""),  # already a flag, not decimal input
     ],
 )
 def test_compute_capability_to_compiler_flag(compute_cap, expected):
-    """Test conversion of decimal compute capability to the sm_XX compiler-flag form."""
+    """Test conversion of decimal compute capability to the XX compiler-flag form."""
     assert archspec.gpu.nvidia._compute_capability_to_compiler_flag(compute_cap) == expected
 
 
@@ -162,14 +162,14 @@ def test_nvidia_smi_info_parses_smi_output(monkeypatch):
     assert gpus[0].brand_string == "NVIDIA GeForce RTX 5080"
     assert gpus[0].driver_version == "595.58.03"
     assert gpus[0].component_pci_code == "0x2c02"
-    assert gpus[0].compute_capability == "sm_120"
-    assert gpus[0].name == "sm_120"
+    assert gpus[0].compute_capability == "120"
+    assert gpus[0].name == "120"
 
     assert gpus[1].brand_string == "NVIDIA H100 PCIe"
     assert gpus[1].driver_version == "550.54.15"
     assert gpus[1].component_pci_code == "0x2330"
-    assert gpus[1].compute_capability == "sm_90"
-    assert gpus[1].name == "sm_90"
+    assert gpus[1].compute_capability == "90"
+    assert gpus[1].name == "90"
 
 
 # --- Stage 2: rocm-smi parsing ---
@@ -326,13 +326,13 @@ def test_host_does_not_collapse_identical_gpus(tmp_path, monkeypatch):
     [
         {},
         {
-            "name": "sm_90",
+            "name": "90",
             "brand_string": "NVIDIA H100 PCIe",
             "vendor": "nvidia",
             "driver_version": "550.54.15",
             "vendor_pci_code": "0x10de",
             "component_pci_code": "0x2330",
-            "compute_capability": "sm_90",
+            "compute_capability": "90",
         },
         {
             "name": "gfx942",

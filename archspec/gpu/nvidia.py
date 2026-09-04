@@ -52,7 +52,7 @@ def _parse_pci_device_id(combined_id: str) -> Tuple[str, str]:
 def _compute_capability_to_compiler_flag(name: str) -> str:
     """Transform decimal format compute capability to format expected by compiler flags.
 
-    e.g. 9.0 -> sm_90
+    e.g. 9.0 -> 90
     """
     # validation
     if not name:
@@ -63,7 +63,6 @@ def _compute_capability_to_compiler_flag(name: str) -> str:
 
     # parsing
     parsed_name = name.replace(".", "")
-    parsed_name = f"sm_{parsed_name}"
 
     return parsed_name
 
