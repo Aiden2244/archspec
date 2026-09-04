@@ -20,9 +20,6 @@ def mock_smi(stdout, returncode=0):
     return _run
 
 
-# --- Stage 2: nvidia-smi parsing ---
-
-
 @pytest.mark.parametrize(
     "combined,expected",
     [
@@ -87,17 +84,11 @@ def test_nvidia_smi_info_parses_smi_output(monkeypatch):
     assert gpus[1].name == "90"
 
 
-# --- Stage 2: rocm-smi parsing ---
-
-
 def test_rocm_smi_info_handles_malformed_json(monkeypatch):
     """Test that amd.smi_info returns no GPUs when rocm-smi emits unparseable output."""
     monkeypatch.setattr(archspec.gpu.amd.subprocess, "run", mock_smi("not json"))
 
     assert archspec.gpu.amd.smi_info() == []
-
-
-# --- Python API: GPUMicroarch serialization and equality ---
 
 
 @pytest.mark.parametrize(
