@@ -49,24 +49,6 @@ def _parse_pci_device_id(combined_id: str) -> Tuple[str, str]:
     return (f"0x{hex_digits[:4]}".lower(), f"0x{hex_digits[4:]}".lower())
 
 
-def _compute_capability_to_compiler_flag(name: str) -> str:
-    """Transform decimal format compute capability to format expected by compiler flags.
-
-    e.g. 9.0 -> 90
-    """
-    # validation
-    if not name:
-        return ""
-
-    if not name[0].isdigit() or "." not in name:
-        return ""
-
-    # parsing
-    parsed_name = name.replace(".", "")
-
-    return parsed_name
-
-
 def _run_smi(fields: List[str]) -> subprocess.CompletedProcess:
     """Run nvidia-smi querying the given GPU fields, in CSV format."""
     return subprocess.run(
@@ -117,9 +99,7 @@ def smi_info() -> List[GPUMicroarch]:
             warnings.warn(f"skipping NVIDIA GPU: {e}")
             continue
 
-        compute_capability = (
-            _compute_capability_to_compiler_flag(parts[3]) if len(parts) > 3 else ""
-        )
+        compute_capability = parts[3] if len(parts) > 3 else ""
         gpus.append(
             GPUMicroarch(
                 name=compute_capability,
