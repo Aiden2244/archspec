@@ -9,7 +9,7 @@ import subprocess
 import warnings
 from typing import List, Tuple
 
-from .gpu_microarch import GPUMicroarch
+from .gpu import GPU, ComputeCapability, VendorPciCode
 
 #: Fields queried from nvidia-smi, in output-column order. ``compute_cap`` is
 #: only recognized on newer drivers (~R495+); on older drivers it is dropped
@@ -64,7 +64,7 @@ def _run_smi(fields: List[str]) -> subprocess.CompletedProcess:
     )
 
 
-def smi_info() -> List[GPUMicroarch]:
+def smi_info() -> List[GPU]:
     """Retrieve info for all NVIDIA GPUs using nvidia-smi."""
 
     # Try query with compute_cap first, then fall back without it.
@@ -84,30 +84,37 @@ def smi_info() -> List[GPUMicroarch]:
         except subprocess.CalledProcessError:
             return []
 
-    gpus: List[GPUMicroarch] = []
+    gpus: List[GPU] = []
     for line in result.stdout.strip().splitlines():
         parts = [p.strip() for p in line.split(",")]
         # parts align positionally with `fields`:
-        # [brand_string, driver_version, combined vendor+device pci code(, compute_cap)]
+        # [gpu_name, driver_version, combined vendor+device pci code(, compute_cap)]
         if len(parts) < len(_SMI_BASE_FIELDS):
             continue
 
         # Skip this gpu if id parsing is malformed
         try:
-            pci_codes = _parse_pci_device_id(parts[2])
+            component_pci_code, vendor_pci_code = _parse_pci_device_id(parts[2])
+            vendor = VendorPciCode(vendor_pci_code)
         except ValueError as e:
             warnings.warn(f"skipping NVIDIA GPU: {e}")
             continue
 
-        compute_capability = parts[3] if len(parts) > 3 else ""
+        # Older drivers don't report compute_cap, and some cards report "[N/A]"
+        compute_capability = None
+        if len(parts) > 3:
+            try:
+                compute_capability = ComputeCapability.from_str(parts[3])
+            except ValueError as e:
+                warnings.warn(f"NVIDIA GPU {parts[0]!r}: {e}")
+
         gpus.append(
-            GPUMicroarch(
-                name=compute_capability,
+            GPU(
+                name=parts[0],
                 vendor="nvidia",
-                brand_string=parts[0],
+                vendor_pci_code=vendor,
+                component_pci_code=component_pci_code,
                 driver_version=parts[1],
-                component_pci_code=pci_codes[0],
-                vendor_pci_code=pci_codes[1],
                 compute_capability=compute_capability,
             )
         )

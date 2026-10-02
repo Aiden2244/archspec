@@ -9,6 +9,7 @@ import pytest
 import archspec.gpu
 import archspec.gpu.amd
 import archspec.gpu.nvidia
+from archspec.gpu.gpu import GPU, ComputeCapability, GFXTarget, VendorPciCode
 
 
 def mock_smi(stdout, returncode=0):
@@ -40,7 +41,7 @@ def test_nvidia_pci_device_id_invalid(bad_id):
 
 
 def test_nvidia_smi_info_parses_smi_output(monkeypatch):
-    """Test that nvidia.smi_info parses nvidia-smi CSV output into GPUMicroarch objects."""
+    """Test that nvidia.smi_info parses nvidia-smi CSV output into GPU objects."""
     nvidia_smi_csv = (
         "NVIDIA GeForce RTX 5080, 595.58.03, 0x2C0210DE, 12.0\n"
         "NVIDIA H100 PCIe, 550.54.15, 0x233010DE, 9.0\n"
@@ -53,17 +54,15 @@ def test_nvidia_smi_info_parses_smi_output(monkeypatch):
     assert all(gpu.vendor == "nvidia" for gpu in gpus)
     assert all(gpu.vendor_pci_code == "0x10de" for gpu in gpus)
 
-    assert gpus[0].brand_string == "NVIDIA GeForce RTX 5080"
+    assert gpus[0].name == "NVIDIA GeForce RTX 5080"
     assert gpus[0].driver_version == "595.58.03"
     assert gpus[0].component_pci_code == "0x2c02"
-    assert gpus[0].compute_capability == "12.0"
-    assert gpus[0].name == "12.0"
+    assert gpus[0].compute_capability == ComputeCapability(12, 0)
 
-    assert gpus[1].brand_string == "NVIDIA H100 PCIe"
+    assert gpus[1].name == "NVIDIA H100 PCIe"
     assert gpus[1].driver_version == "550.54.15"
     assert gpus[1].component_pci_code == "0x2330"
-    assert gpus[1].compute_capability == "9.0"
-    assert gpus[1].name == "9.0"
+    assert gpus[1].compute_capability == ComputeCapability(9, 0)
 
 
 def test_rocm_smi_info_handles_malformed_json(monkeypatch):
@@ -78,42 +77,41 @@ def test_rocm_smi_info_handles_malformed_json(monkeypatch):
     [
         {},
         {
-            "name": "9.0",
-            "brand_string": "NVIDIA H100 PCIe",
+            "name": "NVIDIA H100 PCIe",
             "vendor": "nvidia",
             "driver_version": "550.54.15",
-            "vendor_pci_code": "0x10de",
+            "vendor_pci_code": VendorPciCode.NVIDIA,
             "component_pci_code": "0x2330",
-            "compute_capability": "9.0",
+            "compute_capability": ComputeCapability(9, 0),
         },
         {
-            "name": "gfx942",
-            "brand_string": "AMD Instinct MI300A",
+            "name": "AMD Instinct MI300A",
             "vendor": "amd",
             "driver_version": "6.16.13",
-            "vendor_pci_code": "0x1002",
+            "vendor_pci_code": VendorPciCode.AMD,
             "component_pci_code": "0x74a0",
-            "gfx_target": "gfx942",
+            "gfx_target": GFXTarget(9, 4, 2),
         },
     ],
 )
 def test_round_trip_dict(kwargs):
-    """A GPUMicroarch survives a round trip through to_dict/from_dict."""
-    gpu = archspec.gpu.GPUMicroarch(**kwargs)
-    assert archspec.gpu.GPUMicroarch.from_dict(gpu.to_dict()) == gpu
+    """A GPU survives a round trip through to_dict/from_dict."""
+    gpu = GPU(**kwargs)
+    assert GPU.from_dict(gpu.to_dict()) == gpu
 
 
 def test_equality_and_hash():
-    """Equal GPUMicroarch objects compare equal, hash equal, and deduplicate in sets."""
+    """Equal GPU objects compare equal, hash equal, and deduplicate in sets."""
     kwargs = {
-        "name": "gfx942",
+        "name": "AMD Instinct MI300A",
         "vendor": "amd",
-        "vendor_pci_code": "0x1002",
+        "vendor_pci_code": VendorPciCode.AMD,
         "component_pci_code": "0x74a0",
+        "gfx_target": GFXTarget(9, 4, 2),
     }
-    first = archspec.gpu.GPUMicroarch(**kwargs)
-    second = archspec.gpu.GPUMicroarch(**kwargs)
-    other_driver = archspec.gpu.GPUMicroarch(**kwargs, driver_version="6.16.13")
+    first = GPU(**kwargs)
+    second = GPU(**kwargs)
+    other_driver = GPU(**kwargs, driver_version="6.16.13")
 
     assert first == second
     assert hash(first) == hash(second)

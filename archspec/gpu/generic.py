@@ -8,8 +8,7 @@ import os
 import warnings
 from typing import List
 
-from . import schema
-from .gpu_microarch import GPUMicroarch
+from .gpu import GPU, PciClass, VendorPciCode
 
 #: Path to the sysfs PCI devices directory
 SYSFS_PCI_DEVICES = "/sys/bus/pci/devices"
@@ -21,23 +20,21 @@ def _read_sysfs_file(path: str) -> str:
         return f.read().strip()
 
 
-def scan_sysfs_pci_for_gpus() -> List[GPUMicroarch]:
+def scan_sysfs_pci_for_gpus() -> List[GPU]:
     """Enumerate GPUs by scanning sysfs PCI devices.
 
     Iterates over ``/sys/bus/pci/devices/`` and yields one entry per device whose
-    PCI class indicates a GPU. Each entry carries only the identity available
-    without a vendor tool: the vendor name and the PCI vendor and device codes.
+    PCI class is in ``PciClass`` and whose vendor is in ``VendorPciCode``. Each entry
+    carries only the identity available without a vendor tool: the vendor, the PCI
+    vendor and device codes, and the PCI class.
 
     Returns:
-        A list of GPUMicroarch, one per GPU-class PCI device on the system.
+        A list of GPU, one per GPU-class PCI device from a supported vendor.
     """
-    gpus: List[GPUMicroarch] = []
+    gpus: List[GPU] = []
 
     if not os.path.isdir(SYSFS_PCI_DEVICES):
         return gpus
-
-    gpu_pci_classes = schema.DETECTION_JSON["pci_classes"]
-    gpu_vendors = schema.DETECTION_JSON["vendors"]
 
     for entry in os.listdir(SYSFS_PCI_DEVICES):
         device_dir = os.path.join(SYSFS_PCI_DEVICES, entry)
@@ -48,19 +45,22 @@ def scan_sysfs_pci_for_gpus() -> List[GPUMicroarch]:
             class_path = os.path.join(device_dir, "class")
             if not os.path.exists(class_path):
                 continue
-            if _read_sysfs_file(class_path) not in gpu_pci_classes:
-                continue
 
-            vendor_id = _read_sysfs_file(os.path.join(device_dir, "vendor"))
-            vendor_name = gpu_vendors.get(vendor_id)
-            if vendor_name is None:
+            # Skip devices that aren't GPUs, or aren't from a supported vendor
+            try:
+                pci_class = PciClass(_read_sysfs_file(class_path))
+                vendor_pci_code = VendorPciCode(
+                    _read_sysfs_file(os.path.join(device_dir, "vendor"))
+                )
+            except ValueError:
                 continue
 
             gpus.append(
-                GPUMicroarch(
-                    vendor=vendor_name,
-                    vendor_pci_code=vendor_id,
+                GPU(
+                    vendor=vendor_pci_code.name.lower(),
+                    vendor_pci_code=vendor_pci_code,
                     component_pci_code=_read_sysfs_file(os.path.join(device_dir, "device")),
+                    pci_class=pci_class,
                 )
             )
         except OSError as exc:

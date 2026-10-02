@@ -9,11 +9,10 @@ import subprocess
 import warnings
 from typing import List
 
-from . import schema
-from .gpu_microarch import GPUMicroarch
+from .gpu import GPU, GFXTarget, VendorPciCode
 
 
-def smi_info() -> List[GPUMicroarch]:
+def smi_info() -> List[GPU]:
     """Retrieve info for all AMD GPUs using rocm-smi."""
 
     try:
@@ -41,37 +40,38 @@ def smi_info() -> List[GPUMicroarch]:
     except ValueError:
         return []
 
-    # AMD's PCI vendor code is not reported by rocm-smi, so derive it from the
-    # known vendor mapping the same way the ``vendor`` field is hardcoded.
-    vendor_pci_code = next(
-        code for code, name in schema.DETECTION_JSON["vendors"].items() if name == "amd"
-    )
-
     # The driver version is reported once for the whole system rather than
     # per-card, under a top-level "system" entry.
     system_info = data.get("system", {})
     driver_version = system_info.get("Driver version", "")
 
-    gpus: List[GPUMicroarch] = []
+    gpus: List[GPU] = []
     for key, info in data.items():
         if not key.startswith("card"):
             continue
 
         # Key names vary across rocm-smi versions, so fall back across the
         # known aliases for the marketing name and the PCI device ID.
-        brand_string = info.get("Card Series") or info.get("Market Name") or ""
+        name = info.get("Card Series") or info.get("Market Name") or ""
         component_pci_code = info.get("Device ID") or info.get("GPU ID") or ""
-        gfx_version = info.get("GFX Version") or ""
+        gfx_version = info.get("GFX Version")
+
+        gfx_target = None
+        if gfx_version:
+            try:
+                gfx_target = GFXTarget.from_str(gfx_version)
+            except ValueError as e:
+                warnings.warn(f"AMD GPU {name!r}: {e}")
 
         gpus.append(
-            GPUMicroarch(
-                name=gfx_version,
+            GPU(
+                name=name,
                 vendor="amd",
-                brand_string=brand_string,
-                driver_version=driver_version,
+                # rocm-smi doesn't report the PCI vendor ID, but it's always AMD's
+                vendor_pci_code=VendorPciCode.AMD,
                 component_pci_code=component_pci_code.lower(),
-                vendor_pci_code=vendor_pci_code,
-                gfx_target=gfx_version,
+                driver_version=driver_version,
+                gfx_target=gfx_target,
             )
         )
     return gpus

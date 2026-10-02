@@ -12,6 +12,7 @@ import warnings
 from typing import Callable, Dict, List, Tuple
 
 from . import amd, generic, nvidia
+from .gpu import GPU
 from .gpu_microarch import GPUMicroarch
 
 #: Mapping from operating systems to chain of commands
@@ -34,16 +35,16 @@ def detection(operating_system: str):
 
 
 #: Vendor SMI tools used to enrich detection: (executable, info function).
-_SMI_SOURCES: List[Tuple[str, Callable[[], List[GPUMicroarch]]]] = [
+_SMI_SOURCES: List[Tuple[str, Callable[[], List[GPU]]]] = [
     ("nvidia-smi", nvidia.smi_info),
     ("rocm-smi", amd.smi_info),
 ]
 
 
 @detection(operating_system="Linux")
-def _detect_gpus_linux() -> List[GPUMicroarch]:
+def _detect_gpus_linux() -> List[GPU]:
     """Enumerate all GPUs present on Linux: vendor SMI tools plus a sysfs PCI scan fallback."""
-    results: List[GPUMicroarch] = []
+    results: List[GPU] = []
 
     for executable, info_fn in _SMI_SOURCES:
         if shutil.which(executable) is not None:
@@ -58,20 +59,39 @@ def _detect_gpus_linux() -> List[GPUMicroarch]:
     return results
 
 
-@functools.lru_cache(maxsize=None)
-def host() -> List[GPUMicroarch]:
-    """Detects the GPUs on the host system and returns information about them.
+def detected_info() -> List[GPU]:
+    """Returns a GPU object for each GPU detected on the current host.
 
-    Returns:
-        A list of GPUMicroarch objects, one per detected GPU.
+    This function calls all the viable factories one after the other until there's one that is
+    able to produce the requested information. Returns an empty list if none of the calls succeed.
     """
-    results: List[GPUMicroarch] = []
-
+    # Mirrors archspec.cpu.detect.detected_info
+    # pylint: disable=broad-except,duplicate-code
     for factory in INFO_FACTORY[platform.system()]:
         try:
-            results = factory()
-            break
-        except Exception as e:  # pylint: disable=broad-except
-            warnings.warn(str(e))
+            return factory()
+        except Exception as exc:
+            warnings.warn(str(exc))
 
-    return results
+    return []
+
+
+@functools.lru_cache(maxsize=None)
+def host() -> List[GPUMicroarch]:
+    """Detects the GPU microarchitectures on the host system.
+
+    GPUs that can't be mapped to a microarchitecture (e.g. from an unsupported vendor, or missing
+    the vendor-specific identifier) are skipped with a warning.
+
+    Returns:
+        A list of GPUMicroarch objects, one per successfully mapped GPU.
+    """
+    microarchs: List[GPUMicroarch] = []
+
+    for gpu in detected_info():
+        try:
+            microarchs.append(GPUMicroarch.from_gpu(gpu))
+        except ValueError as exc:
+            warnings.warn(f"skipping GPU: {exc}")
+
+    return microarchs

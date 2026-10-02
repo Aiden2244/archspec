@@ -54,13 +54,6 @@ def _make_parser() -> argparse.ArgumentParser:
         help="archspec command line interface for GPU",
         description="archspec command line interface for GPU",
     )
-    gpu_command.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        dest="verbose",
-        help="Display detailed GPU information and exit.",
-    )
     gpu_command.set_defaults(run=gpu)
 
     return parser
@@ -79,7 +72,7 @@ def cpu(args) -> int:
     return 0
 
 
-def gpu(args) -> int:
+def gpu(args) -> int:  # pylint: disable=unused-argument
     """Run the `archspec gpu` subcommand."""
     try:
         gpus = gpu_host()
@@ -95,10 +88,7 @@ def gpu(args) -> int:
     print(f"Detected {num_gpus} GPU(s).\n")
     for i in range(num_gpus):
         print(f"GPU {i}:")
-        if args.verbose:
-            print(gpus[i].detailed_string())
-        else:
-            print(gpus[i])
+        print(gpus[i])
         if i < (num_gpus - 1):
             print()
 
